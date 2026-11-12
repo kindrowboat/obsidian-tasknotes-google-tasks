@@ -42,6 +42,8 @@ export interface PluginSettings {
 	syncOnStartup: boolean;
 	/** Sync shortly after a task note is created, edited, renamed or deleted. */
 	syncOnChange: boolean;
+	/** Show the last sync time in the status bar. */
+	showStatusBar: boolean;
 
 	listMappings: ListMapping[];
 
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncIntervalMinutes: 5,
 	syncOnStartup: true,
 	syncOnChange: true,
+	showStatusBar: true,
 
 	listMappings: [],
 

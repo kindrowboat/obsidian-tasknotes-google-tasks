@@ -99,6 +99,13 @@ export class SettingsTab extends PluginSettingTab {
 				await this.save();
 			}));
 		new Setting(el)
+			.setName("Show last sync time in status bar")
+			.setDesc("Also available as the \"Toggle status bar sync time\" command.")
+			.addToggle((t) =>
+				t.setValue(this.s.showStatusBar).onChange(async (v) => {
+					await this.plugin.setStatusBarVisible(v);
+				}));
+		new Setting(el)
 			.setName("Sync now")
 			.setDesc(this.s.lastSync ? `Last sync: ${new Date(this.s.lastSync).toLocaleString()}` : "Never synced.")
 			.addButton((b) => b.setButtonText("Sync").onClick(async () => {

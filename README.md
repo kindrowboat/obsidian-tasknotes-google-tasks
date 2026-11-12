@@ -72,7 +72,7 @@ Rules:
 - **Sync automatically** runs every *X* minutes (5 by default). You can change the interval in the settings.
 - **Sync when tasks change** (on by default) syncs about 3 seconds after you create, edit, rename or delete a task note, so you don't have to wait for the interval. Edits made by the sync itself don't trigger another sync.
 - **Sync when Obsidian starts** runs a sync once the vault has finished indexing.
-- The status bar shows when the last sync happened.
+- The status bar shows when the last sync happened. Hide it in settings or with the **Toggle status bar sync time** command.
 
 ### What syncs
 

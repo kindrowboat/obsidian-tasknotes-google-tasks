@@ -38,6 +38,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 		this.addCommand({ id: "sync", name: "Sync with Google Tasks", callback: () => void this.sync(true) });
 		this.addCommand({ id: "refresh-lists", name: "Refresh Google Tasks lists", callback: () => void this.refreshLists() });
 		this.addCommand({ id: "sign-in", name: "Sign in to Google", callback: () => void this.signIn() });
+		this.addCommand({ id: "toggle-status-bar", name: "Toggle status bar sync time", callback: () => void this.setStatusBarVisible(!this.settings.showStatusBar) });
 
 		this.addSettingTab(new SettingsTab(this.app, this));
 
@@ -213,7 +214,14 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 		}
 	}
 
+	async setStatusBarVisible(visible: boolean) {
+		this.settings.showStatusBar = visible;
+		await this.saveSettings();
+		this.updateStatusBar();
+	}
+
 	private updateStatusBar(text?: string) {
+		this.statusBar.toggle(this.settings.showStatusBar);
 		const last = this.settings.lastSync ? new Date(this.settings.lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "never";
 		this.statusBar.setText(`Google Tasks: ${text ?? last}`);
 	}
