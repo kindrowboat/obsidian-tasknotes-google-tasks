@@ -1,5 +1,5 @@
 import type { TokenSet } from "./google/auth";
-import type { SyncRecord } from "./sync/model";
+import type { DateMapping, SyncRecord } from "./sync/model";
 
 /** One Google Tasks list as known to the plugin, and the context it maps to. */
 export interface ListMapping {
@@ -19,6 +19,7 @@ export interface TaskNotesFallback {
 	titleField: string;
 	statusField: string;
 	dueField: string;
+	scheduledField: string;
 	contextsField: string;
 	completedDateField: string;
 	dateModifiedField: string;
@@ -39,6 +40,8 @@ export interface PluginSettings {
 	autoSync: boolean;
 	syncIntervalMinutes: number;
 	syncOnStartup: boolean;
+	/** Sync shortly after a task note is created, edited, renamed or deleted. */
+	syncOnChange: boolean;
 
 	listMappings: ListMapping[];
 
@@ -50,6 +53,8 @@ export interface PluginSettings {
 	idProperty: string;
 	listIdProperty: string;
 
+	/** Which TaskNotes date maps to Google's date. */
+	dateMapping: DateMapping;
 	syncBody: boolean;
 	propagateDeletions: boolean;
 	/** Link already-completed tasks that have never been synced (both directions). */
@@ -70,6 +75,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	autoSync: true,
 	syncIntervalMinutes: 5,
 	syncOnStartup: true,
+	syncOnChange: true,
 
 	listMappings: [],
 
@@ -80,6 +86,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		titleField: "title",
 		statusField: "status",
 		dueField: "due",
+		scheduledField: "scheduled",
 		contextsField: "contexts",
 		completedDateField: "completedDate",
 		dateModifiedField: "dateModified",
@@ -95,6 +102,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	idProperty: "googleTaskId",
 	listIdProperty: "googleTaskListId",
 
+	dateMapping: "due-or-scheduled",
 	syncBody: true,
 	propagateDeletions: true,
 	includeCompletedOnLink: false,

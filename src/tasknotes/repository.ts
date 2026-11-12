@@ -1,6 +1,6 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import type { TaskNotesConfig } from "./config";
-import { normaliseContext, normaliseDue, sanitiseFilename, SyncFields } from "../sync/model";
+import { DateProperty, normaliseContext, normaliseDue, sanitiseFilename, SyncFields } from "../sync/model";
 
 /** A task note as seen by the sync engine. */
 export interface LocalTask {
@@ -8,6 +8,7 @@ export interface LocalTask {
 	title: string;
 	status: string;
 	due: string | null;
+	scheduled: string | null;
 	notes: string;
 	/** All contexts on the note, normalised (no "@"). */
 	contexts: string[];
@@ -17,11 +18,15 @@ export interface LocalTask {
 	modified: number;
 }
 
-/** Fields to write to a note; `context` replaces whichever mapped context the note had. */
+/**
+ * Fields to write to a note. `context` replaces whichever mapped context the
+ * note had; `dateTarget` says which date property receives `date`.
+ */
 export interface LocalWrite extends SyncFields {
 	googleTaskId: string;
 	listId: string;
 	completedAt?: string | null;
+	dateTarget: { set: DateProperty | null; clear: DateProperty[] };
 }
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
@@ -43,6 +48,9 @@ function splitBody(content: string): { frontmatter: string; body: string } {
  * syncs plus its own ID keys; everything else in the note is preserved.
  */
 export class TaskNoteRepository {
+	/** Paths this repository wrote to, so callers can ignore the resulting change events. */
+	readonly touched = new Set<string>();
+
 	constructor(
 		private app: App,
 		private cfg: TaskNotesConfig,
@@ -85,6 +93,7 @@ export class TaskNoteRepository {
 				? String(fm[f.status])
 				: this.cfg.defaultOpenStatus,
 			due: normaliseDue(fm[f.due]),
+			scheduled: normaliseDue(fm[f.scheduled]),
 			notes,
 			contexts: asStringArray(fm[f.contexts]).map(normaliseContext),
 			googleTaskId: typeof fm[this.idProperty] === "string" ? (fm[this.idProperty] as string) : null,
@@ -96,6 +105,7 @@ export class TaskNoteRepository {
 	async create(w: LocalWrite, mappedContexts: Set<string>, writeBody: boolean): Promise<TFile> {
 		await this.ensureFolder(this.cfg.tasksFolder);
 		const path = this.availablePath(this.cfg.tasksFolder, sanitiseFilename(w.title));
+		this.touched.add(path);
 		const file = await this.app.vault.create(path, writeBody && w.notes ? w.notes.trim() + "\n" : "");
 		const now = new Date().toISOString();
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
@@ -115,6 +125,7 @@ export class TaskNoteRepository {
 
 	async update(task: LocalTask, w: LocalWrite, mappedContexts: Set<string>, writeBody: boolean): Promise<TFile> {
 		let file = task.file;
+		this.touched.add(file.path);
 		if (writeBody && w.notes.trim() !== task.notes.trim()) {
 			await this.app.vault.process(file, (content) => {
 				const { frontmatter } = splitBody(content);
@@ -130,6 +141,7 @@ export class TaskNoteRepository {
 			const folder = file.parent?.path ?? "";
 			const target = this.availablePath(folder, sanitiseFilename(w.title), file.path);
 			if (target !== file.path) {
+				this.touched.add(target);
 				await this.app.fileManager.renameFile(file, target);
 				file = this.app.vault.getAbstractFileByPath(target) as TFile;
 			}
@@ -139,6 +151,7 @@ export class TaskNoteRepository {
 
 	/** Write only the link keys (after creating the remote task). */
 	async link(file: TFile, googleTaskId: string, listId: string): Promise<void> {
+		this.touched.add(file.path);
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 			fm[this.idProperty] = googleTaskId;
 			fm[this.listIdProperty] = listId;
@@ -146,6 +159,7 @@ export class TaskNoteRepository {
 	}
 
 	async unlink(file: TFile): Promise<void> {
+		this.touched.add(file.path);
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 			delete fm[this.idProperty];
 			delete fm[this.listIdProperty];
@@ -153,15 +167,17 @@ export class TaskNoteRepository {
 	}
 
 	async trash(file: TFile): Promise<void> {
+		this.touched.add(file.path);
 		await this.app.fileManager.trashFile(file);
 	}
 
 	private applyFields(fm: Record<string, unknown>, w: LocalWrite, mappedContexts: Set<string>, now: string) {
 		const f = this.cfg.fields;
 		fm[f.status] = w.status;
-		// Keep a local due time if the date itself is unchanged (Google only stores dates).
-		if (!w.due) delete fm[f.due];
-		else if (normaliseDue(fm[f.due]) !== w.due) fm[f.due] = w.due;
+		for (const p of w.dateTarget.clear) delete fm[f[p]];
+		// Keep a local time if the date itself is unchanged (Google only stores dates).
+		const target = w.dateTarget.set;
+		if (target && w.date && normaliseDue(fm[f[target]]) !== w.date) fm[f[target]] = w.date;
 
 		if (this.cfg.completedStatuses.includes(w.status)) {
 			if (!fm[f.completedDate]) fm[f.completedDate] = (w.completedAt ?? now).slice(0, 10);

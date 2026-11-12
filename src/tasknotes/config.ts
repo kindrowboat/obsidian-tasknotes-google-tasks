@@ -10,6 +10,7 @@ export interface TaskNotesConfig extends StatusConfig {
 		title: string;
 		status: string;
 		due: string;
+		scheduled: string;
 		contexts: string;
 		completedDate: string;
 		dateModified: string;
@@ -53,6 +54,7 @@ export function resolveConfig(app: App, s: PluginSettings): TaskNotesConfig {
 			title: f.titleField,
 			status: f.statusField,
 			due: f.dueField,
+			scheduled: f.scheduledField,
 			contexts: f.contextsField,
 			completedDate: f.completedDateField,
 			dateModified: f.dateModifiedField,
@@ -85,6 +87,7 @@ export function resolveConfig(app: App, s: PluginSettings): TaskNotesConfig {
 			title: pick("title", base.fields.title),
 			status: pick("status", base.fields.status),
 			due: pick("due", base.fields.due),
+			scheduled: pick("scheduled", base.fields.scheduled),
 			contexts: pick("contexts", base.fields.contexts),
 			completedDate: pick("completedDate", base.fields.completedDate),
 			dateModified: pick("dateModified", base.fields.dateModified),

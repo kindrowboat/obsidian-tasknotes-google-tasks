@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+	dateTargets,
 	decodeGoogleNotes,
 	dueFromGoogle,
 	dueToGoogle,
+	effectiveDate,
 	encodeGoogleNotes,
 	fingerprint,
 	normaliseDue,
@@ -18,12 +20,12 @@ import {
 import { activeMappings, mergeLists } from "../src/sync/lists";
 
 const cfg: StatusConfig = { defaultOpenStatus: "open", doneStatus: "done", completedStatuses: ["done", "cancelled"] };
-const base: SyncFields = { title: "Buy milk", status: "open", due: "2026-11-20", notes: "Oat", context: "home" };
+const base: SyncFields = { title: "Buy milk", status: "open", date: "2026-11-20", notes: "Oat", context: "home" };
 
 test("fingerprint changes with any synced field", () => {
 	const f = fingerprint(base);
 	assert.equal(f, fingerprint({ ...base }));
-	for (const k of ["title", "status", "due", "notes", "context"] as const) {
+	for (const k of ["title", "status", "date", "notes", "context"] as const) {
 		assert.notEqual(fingerprint({ ...base, [k]: "x" }), f, k);
 	}
 	assert.equal(fingerprint({ ...base, notes: "Oat\r\n" }), f, "line endings and trailing whitespace ignored");
@@ -114,4 +116,22 @@ test("activeMappings rejects a context used twice", () => {
 		{ listId: "1", listTitle: "A", context: "home", enabled: true, present: true },
 		{ listId: "2", listTitle: "B", context: "@home", enabled: true, present: true },
 	]), /mapped to both/);
+});
+
+test("effective date per mapping", () => {
+	assert.equal(effectiveDate("2026-11-20", "2026-11-13", "due-or-scheduled"), "2026-11-20");
+	assert.equal(effectiveDate(null, "2026-11-13", "due-or-scheduled"), "2026-11-13");
+	assert.equal(effectiveDate(null, null, "due-or-scheduled"), null);
+	assert.equal(effectiveDate("2026-11-20", "2026-11-13", "scheduled"), "2026-11-13");
+	assert.equal(effectiveDate(null, "2026-11-13", "due"), null);
+});
+
+test("incoming date goes back to the property it came from", () => {
+	const d = "2026-11-21";
+	assert.deepEqual(dateTargets("due-or-scheduled", true, true, d), { set: "due", clear: [] });
+	assert.deepEqual(dateTargets("due-or-scheduled", false, true, d), { set: "scheduled", clear: [] });
+	assert.deepEqual(dateTargets("due-or-scheduled", false, false, d), { set: "due", clear: [] }, "new notes get a due date");
+	assert.deepEqual(dateTargets("due-or-scheduled", true, true, null), { set: null, clear: ["due", "scheduled"] });
+	assert.deepEqual(dateTargets("scheduled", true, false, d), { set: "scheduled", clear: [] });
+	assert.deepEqual(dateTargets("due", true, true, null), { set: null, clear: ["due"] });
 });

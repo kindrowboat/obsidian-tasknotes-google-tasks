@@ -85,6 +85,14 @@ export class SettingsTab extends PluginSettingTab {
 					this.plugin.restartInterval();
 				});
 			});
+		new Setting(el)
+			.setName("Sync when tasks change")
+			.setDesc("Sync a few seconds after a task note is created, edited, renamed or deleted, instead of waiting for the next interval.")
+			.addToggle((t) =>
+				t.setValue(this.s.syncOnChange).onChange(async (v) => {
+					this.s.syncOnChange = v;
+					await this.save();
+				}));
 		new Setting(el).setName("Sync when Obsidian starts").addToggle((t) =>
 			t.setValue(this.s.syncOnStartup).onChange(async (v) => {
 				this.s.syncOnStartup = v;
@@ -193,6 +201,18 @@ export class SettingsTab extends PluginSettingTab {
 	private behaviourSection(el: HTMLElement) {
 		new Setting(el).setName("Behaviour").setHeading();
 		new Setting(el)
+			.setName("Google Tasks date")
+			.setDesc("Google's API exposes one date per task: the date it's scheduled for. The deadline shown in Google Tasks isn't available to plugins. Choose which TaskNotes date it maps to.")
+			.addDropdown((d) => d
+				.addOption("due-or-scheduled", "Due date, or scheduled date if there's no due date")
+				.addOption("due", "Due date only")
+				.addOption("scheduled", "Scheduled date only")
+				.setValue(this.s.dateMapping)
+				.onChange(async (v) => {
+					this.s.dateMapping = v as typeof this.s.dateMapping;
+					await this.save();
+				}));
+		new Setting(el)
 			.setName("Sync note body")
 			.setDesc("Sync the note body with the Google task's notes (Google limits notes to 8192 characters).")
 			.addToggle((t) => t.setValue(this.s.syncBody).onChange(async (v) => {
@@ -261,6 +281,7 @@ export class SettingsTab extends PluginSettingTab {
 		field("titleField", "Title property");
 		field("statusField", "Status property");
 		field("dueField", "Due property");
+		field("scheduledField", "Scheduled property");
 		field("contextsField", "Contexts property");
 		field("priorityField", "Priority property");
 		field("completedDateField", "Completed date property");

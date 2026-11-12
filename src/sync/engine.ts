@@ -6,9 +6,11 @@ export { activeMappings, mergeLists };
 import { resolveConfig, TaskNotesConfig } from "../tasknotes/config";
 import { LocalTask, TaskNoteRepository } from "../tasknotes/repository";
 import {
+	dateTargets,
 	decodeGoogleNotes,
 	dueFromGoogle,
 	dueToGoogle,
+	effectiveDate,
 	encodeGoogleNotes,
 	fingerprint,
 	isCompleted,
@@ -42,6 +44,8 @@ export class SyncEngine {
 	private cfg!: TaskNotesConfig;
 	private repo!: TaskNoteRepository;
 	private summary!: SyncSummary;
+	/** Google IDs linked during this run; absent from the remote snapshot, so cleanup must skip them. */
+	private linkedThisRun = new Set<string>();
 
 	constructor(
 		private app: App,
@@ -50,6 +54,11 @@ export class SyncEngine {
 		private log: (msg: string) => void = () => {},
 	) {}
 
+	/** Vault paths the last run wrote to. */
+	get touchedPaths(): ReadonlySet<string> {
+		return this.repo?.touched ?? new Set();
+	}
+
 	/** Fetch lists from Google and store them in settings (does not save). */
 	async refreshLists(): Promise<void> {
 		const lists = await this.api.listTaskLists();
@@ -57,6 +66,7 @@ export class SyncEngine {
 	}
 
 	async run(): Promise<SyncSummary> {
+		this.linkedThisRun = new Set();
 		this.summary = { pushed: 0, pulled: 0, createdLocal: 0, createdRemote: 0, deletedLocal: 0, deletedRemote: 0, errors: [] };
 		this.cfg = resolveConfig(this.app, this.settings);
 		this.repo = new TaskNoteRepository(this.app, this.cfg, this.settings.idProperty, this.settings.listIdProperty);
@@ -146,7 +156,7 @@ export class SyncEngine {
 		// Forget records for tasks gone from both sides.
 		for (const id of Object.keys(records)) {
 			const rec = records[id];
-			if (!activeListIds.has(rec.listId)) continue;
+			if (!activeListIds.has(rec.listId) || this.linkedThisRun.has(id)) continue;
 			const r = remote.get(id);
 			if ((!r || r.task.deleted) && !localById.has(id)) delete records[id];
 		}
@@ -169,7 +179,7 @@ export class SyncEngine {
 		return {
 			title: local.title,
 			status: local.status,
-			due: local.due,
+			date: effectiveDate(local.due, local.scheduled, this.settings.dateMapping),
 			notes: this.settings.syncBody ? local.notes : "",
 			context,
 		};
@@ -180,7 +190,7 @@ export class SyncEngine {
 		return {
 			title: r.task.title ?? "",
 			status: statusFromGoogle(r.task.status, status, this.cfg),
-			due: dueFromGoogle(r.task.due),
+			date: dueFromGoogle(r.task.due),
 			notes: this.settings.syncBody ? notes : "",
 			context: r.context,
 		};
@@ -191,7 +201,7 @@ export class SyncEngine {
 		const w: TaskWrite = {
 			title: f.title,
 			status: done ? "completed" : "needsAction",
-			due: dueToGoogle(f.due),
+			due: dueToGoogle(f.date),
 			completed: done ? undefined : null,
 			notes: encodeGoogleNotes(f, this.cfg),
 		};
@@ -224,13 +234,17 @@ export class SyncEngine {
 				taskId = moved.id;
 			}
 			await this.api.patchTask(listId, taskId, write);
-			if (taskId !== id) delete this.settings.records[id];
+			if (taskId !== id) {
+				delete this.settings.records[id];
+				this.linkedThisRun.add(taskId);
+			}
 			await this.repo.link(local.file, taskId, listId);
 			this.settings.records[taskId] = { googleTaskId: taskId, listId, path: local.file.path, fingerprint: fingerprint(lf) };
 			this.summary.pushed++;
 			this.log(`→ ${lf.title}`);
 		} else if (decision.kind === "pull") {
-			const file = await this.repo.update(local, { ...rf, googleTaskId: id, listId: r.listId, completedAt: r.task.completed }, mappedContexts, this.settings.syncBody);
+			const dateTarget = dateTargets(this.settings.dateMapping, !!local.due, !!local.scheduled, rf.date);
+			const file = await this.repo.update(local, { ...rf, googleTaskId: id, listId: r.listId, completedAt: r.task.completed, dateTarget }, mappedContexts, this.settings.syncBody);
 			this.settings.records[id] = { googleTaskId: id, listId: r.listId, path: file.path, fingerprint: fingerprint(rf) };
 			this.summary.pulled++;
 			this.log(`← ${rf.title}`);
@@ -251,13 +265,15 @@ export class SyncEngine {
 		const created = await this.api.insertTask(listId, this.toGoogle(lf));
 		await this.repo.link(local.file, created.id, listId);
 		this.settings.records[created.id] = { googleTaskId: created.id, listId, path: local.file.path, fingerprint: fingerprint(lf) };
+		this.linkedThisRun.add(created.id);
 		this.summary.createdRemote++;
 		this.log(`+→ ${lf.title}`);
 	}
 
 	private async createLocal(r: RemoteEntry, mappedContexts: Set<string>) {
 		const rf = this.remoteFields(r);
-		const file = await this.repo.create({ ...rf, googleTaskId: r.task.id, listId: r.listId, completedAt: r.task.completed }, mappedContexts, this.settings.syncBody);
+		const dateTarget = dateTargets(this.settings.dateMapping, false, false, rf.date);
+		const file = await this.repo.create({ ...rf, googleTaskId: r.task.id, listId: r.listId, completedAt: r.task.completed, dateTarget }, mappedContexts, this.settings.syncBody);
 		this.settings.records[r.task.id] = { googleTaskId: r.task.id, listId: r.listId, path: file.path, fingerprint: fingerprint(rf) };
 		this.summary.createdLocal++;
 		this.log(`+← ${rf.title}`);

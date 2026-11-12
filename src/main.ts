@@ -1,12 +1,18 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { refresh, revoke, signIn } from "./google/auth";
 import { TasksApi } from "./google/tasksApi";
 import { DEFAULT_SETTINGS, PluginSettings } from "./settings";
 import { SettingsTab } from "./settingsTab";
 import { SyncEngine, SyncSummary } from "./sync/engine";
+import { resolveConfig } from "./tasknotes/config";
+import { TaskNoteRepository } from "./tasknotes/repository";
 import { errorMessage } from "./util";
 
 const INDEX_WAIT_MS = 10_000;
+/** Quiet period after the last local change before a change-triggered sync. */
+const CHANGE_DEBOUNCE_MS = 3_000;
+/** How long to ignore change events for files the sync itself just wrote. */
+const OWN_WRITE_GRACE_MS = 5_000;
 
 export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	settings!: PluginSettings;
@@ -14,6 +20,12 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	private syncing = false;
 	private intervalId: number | null = null;
 	private statusBar!: HTMLElement;
+	private changeTimer: number | null = null;
+	/** A change arrived during a sync; run again when it finishes. */
+	private resyncPending = false;
+	/** Path → time until which change events for it are our own writes. */
+	private ownWrites = new Map<string, number>();
+	private runningEngine: SyncEngine | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -29,6 +41,10 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 
 		this.addSettingTab(new SettingsTab(this.app, this));
 
+		this.registerEvent(this.app.metadataCache.on("changed", (file) => this.onTaskChanged(file)));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => this.onTaskChanged(file, oldPath)));
+		this.registerEvent(this.app.vault.on("delete", (file) => this.onTaskChanged(file)));
+
 		this.app.workspace.onLayoutReady(async () => {
 			this.restartInterval();
 			if (this.settings.syncOnStartup && this.settings.tokens) {
@@ -40,6 +56,40 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 
 	onunload() {
 		this.clearInterval();
+		if (this.changeTimer !== null) window.clearTimeout(this.changeTimer);
+	}
+
+	/** Queue a sync after a task note is created, edited, renamed or deleted. */
+	private onTaskChanged(file: TAbstractFile, oldPath?: string) {
+		if (!this.settings.syncOnChange || !this.settings.tokens) return;
+		if (!(file instanceof TFile) || file.extension !== "md") return;
+		const now = Date.now();
+		if ((this.ownWrites.get(file.path) ?? 0) > now || (oldPath && (this.ownWrites.get(oldPath) ?? 0) > now)) return;
+		if (!this.isSyncedTask(file, oldPath)) return;
+		if (this.syncing) {
+			const touched = this.runningEngine?.touchedPaths;
+			if (touched?.has(file.path) || (oldPath && touched?.has(oldPath))) return;
+			this.resyncPending = true;
+			return;
+		}
+		this.scheduleChangeSync();
+	}
+
+	/** A note we should react to: a task note now, or a note that was linked before (deleted or untagged). */
+	private isSyncedTask(file: TFile, oldPath?: string): boolean {
+		const known = Object.values(this.settings.records).some((r) => r.path === file.path || r.path === oldPath);
+		if (known) return true;
+		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const cfg = resolveConfig(this.app, this.settings);
+		return new TaskNoteRepository(this.app, cfg, this.settings.idProperty, this.settings.listIdProperty).isTaskFrontmatter(fm);
+	}
+
+	private scheduleChangeSync() {
+		if (this.changeTimer !== null) window.clearTimeout(this.changeTimer);
+		this.changeTimer = window.setTimeout(() => {
+			this.changeTimer = null;
+			void this.sync(false);
+		}, CHANGE_DEBOUNCE_MS);
 	}
 
 	async loadSettings() {
@@ -130,9 +180,11 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 			return null;
 		}
 		this.syncing = true;
+		this.resyncPending = false;
 		this.updateStatusBar("syncing…");
+		const engine = new SyncEngine(this.app, this.api, this.settings, (m) => console.debug(`[tasknotes-google-tasks] ${m}`));
+		this.runningEngine = engine;
 		try {
-			const engine = new SyncEngine(this.app, this.api, this.settings, (m) => console.debug(`[tasknotes-google-tasks] ${m}`));
 			const s = await engine.run();
 			await this.saveSettings();
 			const changed = s.pushed + s.pulled + s.createdLocal + s.createdRemote + s.deletedLocal + s.deletedRemote;
@@ -149,7 +201,15 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 			return null;
 		} finally {
 			this.syncing = false;
+			this.runningEngine = null;
+			const until = Date.now() + OWN_WRITE_GRACE_MS;
+			for (const [path, t] of this.ownWrites) if (t <= Date.now()) this.ownWrites.delete(path);
+			for (const path of engine.touchedPaths) this.ownWrites.set(path, until);
 			this.updateStatusBar();
+			if (this.resyncPending) {
+				this.resyncPending = false;
+				this.scheduleChangeSync();
+			}
 		}
 	}
 

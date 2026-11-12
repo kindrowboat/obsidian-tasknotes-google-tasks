@@ -11,8 +11,8 @@ export interface SyncFields {
 	title: string;
 	/** TaskNotes status value, e.g. "open", "in-progress", "done". */
 	status: string;
-	/** Due date as YYYY-MM-DD, or null. */
-	due: string | null;
+	/** The date Google stores (its "scheduled" date), as YYYY-MM-DD, or null. */
+	date: string | null;
 	/** Free-text description (note body / Google task notes), without the metadata line. */
 	notes: string;
 	/** The context this task belongs to (determines the Google list). */
@@ -44,7 +44,7 @@ export const GOOGLE_NOTES_LIMIT = 8192;
 
 export function fingerprint(f: SyncFields): string {
 	// Stable, order-fixed serialisation. Not cryptographic; it only needs to change when a field changes.
-	const s = JSON.stringify([f.title.trim(), f.status, f.due ?? "", normaliseNotes(f.notes), f.context]);
+	const s = JSON.stringify([f.title.trim(), f.status, f.date ?? "", normaliseNotes(f.notes), f.context]);
 	let h1 = 0xdeadbeef ^ s.length;
 	let h2 = 0x41c6ce57 ^ s.length;
 	for (let i = 0; i < s.length; i++) {
@@ -151,6 +151,39 @@ export function statusFromGoogle(
 }
 
 // ---- Dates -----------------------------------------------------------------
+
+/**
+ * Which TaskNotes date Google's single date maps to. Google's API only exposes
+ * one date (shown as the task's date in Google Tasks; not its deadline).
+ *
+ * - "due-or-scheduled": the note's due date if it has one, otherwise its scheduled date
+ * - "due" / "scheduled": always that property
+ */
+export type DateMapping = "due-or-scheduled" | "due" | "scheduled";
+export type DateProperty = "due" | "scheduled";
+
+/** The date a note sends to Google. */
+export function effectiveDate(due: string | null, scheduled: string | null, mode: DateMapping): string | null {
+	if (mode === "due") return due;
+	if (mode === "scheduled") return scheduled;
+	return due ?? scheduled;
+}
+
+/**
+ * Which note properties to write when a date comes in from Google.
+ * In fallback mode the date goes back to whichever property it came from
+ * (due for new notes), and clearing it clears both so neither resurfaces.
+ */
+export function dateTargets(
+	mode: DateMapping,
+	hasDue: boolean,
+	hasScheduled: boolean,
+	date: string | null,
+): { set: DateProperty | null; clear: DateProperty[] } {
+	if (mode !== "due-or-scheduled") return date ? { set: mode, clear: [] } : { set: null, clear: [mode] };
+	if (!date) return { set: null, clear: ["due", "scheduled"] };
+	return { set: hasDue || !hasScheduled ? "due" : "scheduled", clear: [] };
+}
 
 /** Google stores due as RFC 3339 at midnight UTC; only the date part is meaningful. */
 export function dueFromGoogle(due: string | undefined): string | null {

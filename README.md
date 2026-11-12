@@ -4,9 +4,9 @@ An [Obsidian](https://obsidian.md) plugin that keeps [TaskNotes](https://github.
 
 - Each Google Tasks list maps to one TaskNotes **context** (and each context to one list).
 - New tasks on either side show up on the other side.
-- Titles, status, due dates and note bodies sync both ways. Renaming a task on either side doesn't break the link.
+- Titles, status, dates and note bodies sync both ways. Renaming a task on either side doesn't break the link.
 - Google Tasks only knows "needs action" and "completed". Other TaskNotes statuses, such as `in-progress`, are stored in a small marker line at the end of the Google task's notes.
-- Sync runs on demand, on startup, and every 5 minutes by default.
+- Sync runs on demand, on startup, every 5 minutes by default, and a few seconds after you change a task note.
 
 ## Requirements
 
@@ -70,6 +70,7 @@ Rules:
 
 - **Command palette → "Sync with Google Tasks"**, the ribbon icon, or **Sync now** in the settings.
 - **Sync automatically** runs every *X* minutes (5 by default). You can change the interval in the settings.
+- **Sync when tasks change** (on by default) syncs about 3 seconds after you create, edit, rename or delete a task note, so you don't have to wait for the interval. Edits made by the sync itself don't trigger another sync.
 - **Sync when Obsidian starts** runs a sync once the vault has finished indexing.
 - The status bar shows when the last sync happened.
 
@@ -81,11 +82,22 @@ Rules:
 | `status` in a completed status  | Completed                                           |
 | `status` = default open status  | Needs action                                        |
 | any other `status`              | Needs action + `[tasknotes: status=…]` in the notes |
-| `due` (date part)               | Due date                                            |
+| `due`, or `scheduled` if no due (date part; configurable) | Date                                    |
 | Note body                       | Notes (up to 8192 characters)                       |
 | Mapped context in `contexts`    | Which list the task is in                           |
 
 Priority, projects, tags, time tracking, recurrence and reminders stay in Obsidian and aren't sent to Google. Google subtasks are imported as ordinary tasks.
+
+### Dates
+
+Google's API gives each task a single date: the day it's scheduled for. Google calls the field `due`, but its documentation says it isn't a deadline. The separate deadline you can set in the Google Tasks app isn't available to plugins, so it can't be synced.
+
+The **Google Tasks date** setting chooses which TaskNotes date maps to Google's date:
+
+- **Due date, or scheduled date if there's no due date** (default). A note sends its `due` date, or its `scheduled` date if it has no due date. A date changed in Google goes back to the property it came from; new notes from Google get a `due` date. Clearing the date in Google clears both `due` and `scheduled`, so the other one doesn't take its place.
+- **Due date only** or **Scheduled date only**. The other date stays in Obsidian.
+
+Only the date is synced. A time of day set in TaskNotes stays in the note as long as the date doesn't change.
 
 ### How tasks stay linked
 
@@ -119,7 +131,8 @@ As a safety net, a sync refuses to delete more than half of your linked tasks at
 
 ### Other options
 
-- **Sync note body**: turn this off to sync only the title, status and due date. The marker line is still maintained.
+- **Google Tasks date**: which TaskNotes date maps to the task's date in Google (see below).
+- **Sync note body**: turn this off to sync only the title, status and date. The marker line is still maintained.
 - **Include completed tasks when linking**: by default, completed tasks that have never been synced are skipped in both directions, so your Google history doesn't flood the vault.
 - **Use TaskNotes settings**: reads the tasks folder, task tag or property, property names and statuses from TaskNotes. Turn it off to set them yourself.
 - **Reset sync state**: forgets the last-sync snapshot without unlinking anything. Use it if you hit the deletion safety net on purpose.

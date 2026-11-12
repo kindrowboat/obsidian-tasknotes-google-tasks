@@ -56,7 +56,7 @@ With a title-in-filename setup (the TaskNotes default), a remote rename results 
 { googleTaskId, listId, path, fingerprint }
 ```
 
-`fingerprint` is a hash of the normalised `SyncFields` (`title`, `status`, `due`, `notes`, `context`) as they were after the last successful sync. It is a three-way-merge base without storing full copies. The engine compares each side's current fingerprint with it to tell which side changed. `path` is informational only.
+`fingerprint` is a hash of the normalised `SyncFields` (`title`, `status`, `date`, `notes`, `context`) as they were after the last successful sync. It is a three-way-merge base without storing full copies. The engine compares each side's current fingerprint with it to tell which side changed. `path` is informational only.
 
 `settings.ignoredRemoteIds` holds Google tasks whose local note was deleted while **Propagate deletions** was off. They are never re-imported.
 
@@ -101,13 +101,15 @@ Each per-task step runs inside `guard()`, so one failing task is reported and do
 
 ### Change detection details
 
-- Fingerprints are computed from normalised values: trimmed title, date-only due, notes with normalised line endings, and context without `@`. Cosmetic differences such as a TaskNotes datetime due versus a Google date-only due don't cause ping-pong.
+- Fingerprints are computed from normalised values: trimmed title, date-only date, notes with normalised line endings, and context without `@`. Cosmetic differences such as a TaskNotes datetime versus a Google date-only date don't cause ping-pong.
 - After a push, the record stores the local fingerprint. After a pull, it stores the remote one. Since both sides are then equal, the next run sees `none`.
 - The local modification time is the later of the file `mtime` and the `dateModified` frontmatter. The remote time is Google's `updated`. These are only consulted when both sides changed.
 
 ### Scheduling and concurrency
 
-- `main.ts` holds a single `syncing` flag. Overlapping triggers (timer, command, startup) are dropped, not queued.
+- `main.ts` holds a single `syncing` flag. Overlapping timer, command and startup triggers are dropped, not queued.
+- **Sync on change.** `main.ts` listens to `metadataCache` `changed` and vault `rename`/`delete` events. A note counts if it's a task note, or if a sync record points at its path (so deletions and un-tagging are noticed). Events are debounced for 3 seconds. A change during a running sync sets a flag, and one more sync runs afterwards.
+- **Ignoring our own writes.** `TaskNoteRepository.touched` collects every path the sync writes. Events for those paths are ignored while the sync runs and for 5 seconds after it, because Obsidian reports metadata changes asynchronously. Without this, every sync that wrote something would trigger another one. It would converge, but waste API calls.
 - Startup sync waits for the metadata cache's `resolved` event, bounded at 10 seconds. An unindexed vault would otherwise look like "all notes deleted". The deletion guard is the second line of defence.
 - The interval is a `window.setInterval`, registered with the plugin so Obsidian clears it on unload. It is restarted whenever its settings change.
 
@@ -128,4 +130,4 @@ Users bring their own OAuth client. A shared client ID would need Google's verif
 - Google subtasks are flattened. The `parent` relationship is neither preserved on import nor created on export.
 - Recurrence, priority, projects, reminders and time tracking aren't synced. Google Tasks has no equivalents in its public API.
 - Each run fetches every active list in full. That's simple and correct, and fine for the hundreds-of-tasks scale the API is designed for. An `updatedMin`-based incremental fetch would be the next optimisation.
-- Google's due dates are date-only. A due time set in TaskNotes is kept locally as long as the date doesn't change, but it isn't sent to Google.
+- Google's API has one date per task (`due`, documented as the scheduled date, not a deadline), and it is date-only. The deadline in Google's own apps isn't in the API. `dateMapping` picks which TaskNotes date maps to it (`effectiveDate` / `dateTargets` in `model.ts`). A time set in TaskNotes is kept locally as long as the date doesn't change.
