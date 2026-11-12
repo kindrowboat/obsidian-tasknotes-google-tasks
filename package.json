@@ -13,7 +13,7 @@
     "publish-plugin": "node scripts/publish.mjs"
   },
   "keywords": ["obsidian", "tasknotes", "google-tasks"],
-  "author": "Stef Dunlap",
+  "author": "Ko-op Dunlap",
   "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
     "@types/node": "^22.0.0",

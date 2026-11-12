@@ -51,7 +51,7 @@ After releasing, this forks [`obsidianmd/obsidian-releases`](https://github.com/
 {
 	"id": "tasknotes-google-tasks",
 	"name": "TaskNotes Google Tasks Sync",
-	"author": "Stef Dunlap",
+	"author": "Ko-op Dunlap",
 	"description": "Two-way sync between TaskNotes tasks and Google Tasks, mapping each Google Tasks list to a TaskNotes context.",
 	"repo": "<you>/obsidian-tasknotes-google-tasks"
 }

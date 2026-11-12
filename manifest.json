@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
   "description": "Two-way sync between TaskNotes tasks and Google Tasks, mapping each Google Tasks list to a TaskNotes context.",
-  "author": "Stef Dunlap",
+  "author": "Ko-op Dunlap",
   "authorUrl": "https://kindrobot.ca",
   "isDesktopOnly": false
 }
