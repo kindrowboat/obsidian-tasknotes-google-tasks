@@ -80,7 +80,9 @@ The marker is in the notes rather than a hidden field because Google Tasks has n
 
 `ListMapping` entries (`listId`, `listTitle`, `context`, `enabled`, `present`) are the single source of truth for which lists sync. `mergeLists` is called on every sync and on "Refresh". It adds new lists as disabled and unmapped, refreshes titles, and marks vanished lists `present: false` instead of dropping them, so a temporarily missing list doesn't lose its mapping. `activeMappings` filters to enabled, present and mapped lists, and refuses to run if two lists share a context. That makes the mapping a bijection between synced lists and their contexts.
 
-A note's list is the first of its contexts that is mapped (`pickMappedContext`). When pulling a context change, the repository replaces the old mapped context in the `contexts` array with the new one and keeps any unmapped contexts.
+A Google task lives in exactly one list, but a note can have several mapped contexts. The first mapped context in the note's `contexts` array decides the list (`pickMappedContext`). The others are just contexts as far as Google is concerned.
+
+On a pull, the repository only touches `contexts` if the task changed lists. `moveContext(existing, previous, next)` swaps the old list's context (`previous`, the note's list-deciding context before the pull) for the new one, in the same position. It keeps every other context, mapped or not, and returns the array unchanged, so it isn't rewritten, when `previous === next`. When the note has no mapped context (`previous === null`), membership is left alone. Earlier versions rewrote `contexts` on every pull and dropped all mapped contexts but one, so editing a task in Google silently removed the extra contexts.
 
 ## A sync run (`SyncEngine.run`)
 

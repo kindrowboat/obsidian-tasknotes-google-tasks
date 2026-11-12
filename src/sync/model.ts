@@ -221,6 +221,29 @@ export function pickMappedContext(contexts: string[], mapped: Set<string>): stri
 	return null;
 }
 
+/**
+ * A note's contexts after its Google task changed lists from `previous` to `next`.
+ * Only the old list's context is swapped (in place); other contexts, mapped or
+ * not, are kept. Returns `existing` unchanged when the list didn't change, or
+ * when the note had no mapped context (it stays out of list membership).
+ */
+export function moveContext(existing: string[], previous: string | null, next: string): string[] {
+	if (previous === null || previous === next) return existing;
+	const hasNext = existing.some((c) => normaliseContext(c) === next);
+	const out: string[] = [];
+	let replaced = false;
+	for (const c of existing) {
+		if (normaliseContext(c) === previous) {
+			if (!replaced && !hasNext) out.push(next);
+			replaced = true;
+		} else {
+			out.push(c);
+		}
+	}
+	if (!replaced && !hasNext) out.unshift(next);
+	return out;
+}
+
 // ---- Filenames -------------------------------------------------------------
 
 export function sanitiseFilename(title: string): string {

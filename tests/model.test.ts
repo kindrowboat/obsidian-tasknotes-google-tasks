@@ -8,6 +8,7 @@ import {
 	effectiveDate,
 	encodeGoogleNotes,
 	fingerprint,
+	moveContext,
 	normaliseDue,
 	pickMappedContext,
 	resolve,
@@ -134,4 +135,16 @@ test("incoming date goes back to the property it came from", () => {
 	assert.deepEqual(dateTargets("due-or-scheduled", true, true, null), { set: null, clear: ["due", "scheduled"] });
 	assert.deepEqual(dateTargets("scheduled", true, false, d), { set: "scheduled", clear: [] });
 	assert.deepEqual(dateTargets("due", true, true, null), { set: null, clear: ["due"] });
+});
+
+test("contexts are left alone when the list doesn't change", () => {
+	const existing = ["@home", "school", "errands"];
+	assert.equal(moveContext(existing, "home", "home"), existing, "same object: nothing rewritten");
+	assert.equal(moveContext(existing, null, "work"), existing, "no mapped context: membership untouched");
+});
+
+test("a list move swaps only the old list's context, in place", () => {
+	assert.deepEqual(moveContext(["errands", "home", "school"], "home", "work"), ["errands", "work", "school"]);
+	assert.deepEqual(moveContext(["home", "school"], "home", "school"), ["school"], "new context already present");
+	assert.deepEqual(moveContext(["@home"], "home", "work"), ["work"]);
 });

@@ -148,7 +148,7 @@ export class SyncEngine {
 			}
 			if (r.task.status === "completed" && !this.settings.includeCompletedOnLink) continue;
 			if (!r.task.title?.trim()) continue; // Google keeps empty placeholder tasks around
-			await this.guard(r.task.title, () => this.createLocal(r, mappedContexts));
+			await this.guard(r.task.title, () => this.createLocal(r));
 		}
 
 		await this.applyDeletes(localDeletes, remoteDeletes);
@@ -244,7 +244,8 @@ export class SyncEngine {
 			this.log(`→ ${lf.title}`);
 		} else if (decision.kind === "pull") {
 			const dateTarget = dateTargets(this.settings.dateMapping, !!local.due, !!local.scheduled, rf.date);
-			const file = await this.repo.update(local, { ...rf, googleTaskId: id, listId: r.listId, completedAt: r.task.completed, dateTarget }, mappedContexts, this.settings.syncBody);
+			const previousContext = pickMappedContext(local.contexts, mappedContexts);
+			const file = await this.repo.update(local, { ...rf, googleTaskId: id, listId: r.listId, completedAt: r.task.completed, dateTarget, previousContext }, this.settings.syncBody);
 			this.settings.records[id] = { googleTaskId: id, listId: r.listId, path: file.path, fingerprint: fingerprint(rf) };
 			this.summary.pulled++;
 			this.log(`← ${rf.title}`);
@@ -270,10 +271,10 @@ export class SyncEngine {
 		this.log(`+→ ${lf.title}`);
 	}
 
-	private async createLocal(r: RemoteEntry, mappedContexts: Set<string>) {
+	private async createLocal(r: RemoteEntry) {
 		const rf = this.remoteFields(r);
 		const dateTarget = dateTargets(this.settings.dateMapping, false, false, rf.date);
-		const file = await this.repo.create({ ...rf, googleTaskId: r.task.id, listId: r.listId, completedAt: r.task.completed, dateTarget }, mappedContexts, this.settings.syncBody);
+		const file = await this.repo.create({ ...rf, googleTaskId: r.task.id, listId: r.listId, completedAt: r.task.completed, dateTarget, previousContext: null }, this.settings.syncBody);
 		this.settings.records[r.task.id] = { googleTaskId: r.task.id, listId: r.listId, path: file.path, fingerprint: fingerprint(rf) };
 		this.summary.createdLocal++;
 		this.log(`+← ${rf.title}`);

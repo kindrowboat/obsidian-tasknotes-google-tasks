@@ -111,7 +111,7 @@ export class SettingsTab extends PluginSettingTab {
 		new Setting(el).setName("Lists and contexts").setHeading();
 		el.createEl("p", {
 			cls: "setting-item-description",
-			text: "Each synced Google Tasks list needs exactly one TaskNotes context, and each context maps to one list. Tasks are synced only if they have a mapped context. The list of available lists is filled in when you sign in or sync.",
+			text: "Each synced Google Tasks list needs exactly one TaskNotes context, and each context maps to one list. Tasks are synced only if they have a mapped context. A Google task can only be in one list, so if a note has several mapped contexts, the first one decides the list; the others stay on the note. The list of available lists is filled in when you sign in or sync.",
 		});
 		new Setting(el).setName("Refresh lists from Google").addButton((b) =>
 			b.setButtonText("Refresh").setDisabled(!this.s.tokens).onClick(async () => {

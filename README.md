@@ -62,7 +62,7 @@ Rules:
 
 - An enabled list must have a context, and a context can be used by only one list. Problems are shown in orange.
 - Under **Contexts without a list**, you'll see every context used by your task notes that no list maps to. Click **Create list in Google** to create a list with the same name and map it in one step.
-- If a task note has several contexts, the first one that maps to a list decides where the task goes.
+- A Google task can only be in one list. If a task note has several mapped contexts, the **first** one in its `contexts` list decides where the task goes, and the others stay on the note untouched. For example, `contexts: [home, school]` puts the task in the `home` list.
 - Task notes with no mapped context are not synced.
 - Lists that are turned off, or that have no context, are never touched.
 
@@ -84,7 +84,7 @@ Rules:
 | any other `status`              | Needs action + `[tasknotes: status=…]` in the notes |
 | `due`, or `scheduled` if no due (date part; configurable) | Date                                    |
 | Note body                       | Notes (up to 8192 characters)                       |
-| Mapped context in `contexts`    | Which list the task is in                           |
+| First mapped context in `contexts` | Which list the task is in                        |
 
 Priority, projects, tags, time tracking, recurrence and reminders stay in Obsidian and aren't sent to Google. Google subtasks are imported as ordinary tasks.
 
@@ -119,9 +119,10 @@ For each linked pair, the plugin remembers what both sides looked like after the
 
 ### Moving tasks between lists
 
-- Changing a note's mapped context (for example `work` → `home`) moves the Google task to the `home` list.
-- Moving the task to another synced list in Google Tasks changes the note's context, as long as Google keeps the task's ID. If a Google client re-creates the task instead (new ID), the old note is removed and the moved task is imported as a new note.
-- Removing every mapped context from a note leaves the Google task where it is.
+- Changing a note's first mapped context (for example `work` → `home`) moves the Google task to the `home` list. Reordering `contexts` so a different mapped context comes first counts as a move too.
+- Moving the task to another synced list in Google Tasks swaps the old list's context on the note for the new list's context, in the same position. Other contexts, mapped or not, are kept. This works as long as Google keeps the task's ID. If a Google client re-creates the task instead (new ID), the old note is removed and the moved task is imported as a new note.
+- Removing every mapped context from a note leaves the Google task where it is, and later changes from Google won't add a context back.
+- Edits from Google that don't move the task between lists (title, status, date, notes) never change the note's contexts.
 
 ### Deletions
 

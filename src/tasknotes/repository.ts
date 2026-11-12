@@ -1,6 +1,6 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import type { TaskNotesConfig } from "./config";
-import { DateProperty, normaliseContext, normaliseDue, sanitiseFilename, SyncFields } from "../sync/model";
+import { DateProperty, moveContext, normaliseContext, normaliseDue, sanitiseFilename, SyncFields } from "../sync/model";
 
 /** A task note as seen by the sync engine. */
 export interface LocalTask {
@@ -19,14 +19,16 @@ export interface LocalTask {
 }
 
 /**
- * Fields to write to a note. `context` replaces whichever mapped context the
- * note had; `dateTarget` says which date property receives `date`.
+ * Fields to write to a note. `previousContext` is the note's list-deciding
+ * context before the write (see `moveContext`); `dateTarget` says which date
+ * property receives `date`.
  */
 export interface LocalWrite extends SyncFields {
 	googleTaskId: string;
 	listId: string;
 	completedAt?: string | null;
 	dateTarget: { set: DateProperty | null; clear: DateProperty[] };
+	previousContext: string | null;
 }
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
@@ -102,7 +104,7 @@ export class TaskNoteRepository {
 		};
 	}
 
-	async create(w: LocalWrite, mappedContexts: Set<string>, writeBody: boolean): Promise<TFile> {
+	async create(w: LocalWrite, writeBody: boolean): Promise<TFile> {
 		await this.ensureFolder(this.cfg.tasksFolder);
 		const path = this.availablePath(this.cfg.tasksFolder, sanitiseFilename(w.title));
 		this.touched.add(path);
@@ -118,12 +120,13 @@ export class TaskNoteRepository {
 			} else {
 				fm[this.cfg.identification.name] = coerce(this.cfg.identification.value);
 			}
-			this.applyFields(fm, w, mappedContexts, now);
+			fm[this.cfg.fields.contexts] = [w.context];
+			this.applyFields(fm, w, now);
 		});
 		return file;
 	}
 
-	async update(task: LocalTask, w: LocalWrite, mappedContexts: Set<string>, writeBody: boolean): Promise<TFile> {
+	async update(task: LocalTask, w: LocalWrite, writeBody: boolean): Promise<TFile> {
 		let file = task.file;
 		this.touched.add(file.path);
 		if (writeBody && w.notes.trim() !== task.notes.trim()) {
@@ -135,7 +138,10 @@ export class TaskNoteRepository {
 		const now = new Date().toISOString();
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 			if (!this.cfg.storeTitleInFilename || this.cfg.fields.title in fm) fm[this.cfg.fields.title] = w.title;
-			this.applyFields(fm, w, mappedContexts, now);
+			const existing = asStringArray(fm[this.cfg.fields.contexts]);
+			const moved = moveContext(existing, w.previousContext, w.context);
+			if (moved !== existing) fm[this.cfg.fields.contexts] = moved;
+			this.applyFields(fm, w, now);
 		});
 		if (this.cfg.storeTitleInFilename && w.title !== task.title) {
 			const folder = file.parent?.path ?? "";
@@ -171,7 +177,7 @@ export class TaskNoteRepository {
 		await this.app.fileManager.trashFile(file);
 	}
 
-	private applyFields(fm: Record<string, unknown>, w: LocalWrite, mappedContexts: Set<string>, now: string) {
+	private applyFields(fm: Record<string, unknown>, w: LocalWrite, now: string) {
 		const f = this.cfg.fields;
 		fm[f.status] = w.status;
 		for (const p of w.dateTarget.clear) delete fm[f[p]];
@@ -184,11 +190,6 @@ export class TaskNoteRepository {
 		} else {
 			delete fm[f.completedDate];
 		}
-
-		// Replace any mapped context with the new one; keep unmapped contexts as they are.
-		const existing = asStringArray(fm[f.contexts]);
-		const kept = existing.filter((c) => !mappedContexts.has(normaliseContext(c)));
-		fm[f.contexts] = [w.context, ...kept];
 
 		fm[f.dateModified] = now;
 		fm[this.idProperty] = w.googleTaskId;
