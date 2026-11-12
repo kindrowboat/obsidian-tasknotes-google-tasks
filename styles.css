@@ -1,0 +1,13 @@
+/* TaskNotes Google Tasks Sync */
+.tngt-warning {
+	color: var(--text-warning);
+}
+
+.tngt-empty {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.tngt-indent {
+	padding-left: var(--size-4-6);
+}
