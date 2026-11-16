@@ -254,3 +254,63 @@ export function sanitiseFilename(title: string): string {
 		.slice(0, 120);
 	return cleaned || "Untitled task";
 }
+
+/** How TaskNotes names new task files. */
+export interface FilenameConfig {
+	storeTitleInFilename: boolean;
+	/** TaskNotes' `taskFilenameFormat`: "title", "zettel", "timestamp", "uuid" or "custom". */
+	format: string;
+	/** TaskNotes' `customFilenameTemplate`, e.g. "{{title}}" or "_{{title}}". */
+	customTemplate: string;
+}
+
+/** Values a filename template can use besides the title and the date. */
+export interface FilenameContext {
+	title: string;
+	status: string;
+	priority: string;
+	context: string;
+	due: string | null;
+	scheduled: string | null;
+}
+
+const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+
+/**
+ * File name (without folder or ".md") for a new task note, following TaskNotes'
+ * filename settings. Only the "custom" format is honoured; the other generated
+ * formats fall back to the title, as before. Unknown template variables are
+ * dropped, as TaskNotes does.
+ */
+export function taskFilename(c: FilenameContext, cfg: FilenameConfig, now: Date): string {
+	const title = sanitiseFilename(c.title);
+	if (cfg.storeTitleInFilename || cfg.format !== "custom" || !cfg.customTemplate.trim()) return title;
+	const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+	const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+	const vars: Record<string, string> = {
+		title,
+		titleLower: title.toLowerCase(),
+		titleUpper: title.toUpperCase(),
+		titleSnake: title.toLowerCase().replace(/\s+/g, "_"),
+		titleKebab: title.toLowerCase().replace(/\s+/g, "-"),
+		date,
+		time,
+		timestamp: `${date}-${time}`,
+		dateTime: `${date}-${time.slice(0, 4)}`,
+		shortDate: date.slice(2).replace(/-/g, ""),
+		year: String(now.getFullYear()),
+		month: pad(now.getMonth() + 1),
+		day: pad(now.getDate()),
+		hour: pad(now.getHours()),
+		minute: pad(now.getMinutes()),
+		second: pad(now.getSeconds()),
+		status: c.status,
+		priority: c.priority,
+		context: c.context,
+		dueDate: c.due ?? "",
+		scheduledDate: c.scheduled ?? "",
+	};
+	const filled = cfg.customTemplate.replace(/\{\{(\w+)\}\}|\{(\w+)\}/g, (_, a: string | undefined, b: string | undefined) => vars[a ?? b ?? ""] ?? "");
+	const name = sanitiseFilename(filled);
+	return filled.trim() && name !== "Untitled task" ? name : title;
+}

@@ -1,6 +1,6 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import type { TaskNotesConfig } from "./config";
-import { DateProperty, moveContext, normaliseContext, normaliseDue, sanitiseFilename, SyncFields } from "../sync/model";
+import { DateProperty, moveContext, normaliseContext, normaliseDue, sanitiseFilename, SyncFields, taskFilename } from "../sync/model";
 
 /** A task note as seen by the sync engine. */
 export interface LocalTask {
@@ -106,10 +106,19 @@ export class TaskNoteRepository {
 
 	async create(w: LocalWrite, writeBody: boolean): Promise<TFile> {
 		await this.ensureFolder(this.cfg.tasksFolder);
-		const path = this.availablePath(this.cfg.tasksFolder, sanitiseFilename(w.title));
+		const created = new Date();
+		const name = taskFilename({
+			title: w.title,
+			status: w.status,
+			priority: this.cfg.defaultPriority,
+			context: w.context,
+			due: w.dateTarget.set === "due" ? w.date : null,
+			scheduled: w.dateTarget.set === "scheduled" ? w.date : null,
+		}, this.cfg.filename, created);
+		const path = this.availablePath(this.cfg.tasksFolder, name);
 		this.touched.add(path);
 		const file = await this.app.vault.create(path, writeBody && w.notes ? w.notes.trim() + "\n" : "");
-		const now = new Date().toISOString();
+		const now = created.toISOString();
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 			const f = this.cfg.fields;
 			if (!this.cfg.storeTitleInFilename) fm[f.title] = w.title;

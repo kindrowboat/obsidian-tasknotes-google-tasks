@@ -30,6 +30,8 @@ export interface TaskNotesFallback {
 	completedStatuses: string;
 	defaultPriority: string;
 	storeTitleInFilename: boolean;
+	/** File name for new notes when the title isn't the file name, e.g. "_{{title}}". */
+	filenameTemplate: string;
 }
 
 export interface PluginSettings {
@@ -100,6 +102,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		completedStatuses: "done",
 		defaultPriority: "normal",
 		storeTitleInFilename: true,
+		filenameTemplate: "{{title}}",
 	},
 
 	idProperty: "googleTaskId",

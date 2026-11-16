@@ -15,6 +15,9 @@ import {
 	sanitiseFilename,
 	statusFromGoogle,
 	StatusConfig,
+	taskFilename,
+	FilenameConfig,
+	FilenameContext,
 	SyncFields,
 	GOOGLE_NOTES_LIMIT,
 } from "../src/sync/model";
@@ -147,4 +150,23 @@ test("a list move swaps only the old list's context, in place", () => {
 	assert.deepEqual(moveContext(["errands", "home", "school"], "home", "work"), ["errands", "work", "school"]);
 	assert.deepEqual(moveContext(["home", "school"], "home", "school"), ["school"], "new context already present");
 	assert.deepEqual(moveContext(["@home"], "home", "work"), ["work"]);
+});
+
+test("taskFilename follows TaskNotes' custom template", () => {
+	const ctx: FilenameContext = { title: "Buy milk", status: "open", priority: "normal", context: "home", due: "2026-11-20", scheduled: null };
+	const now = new Date(2026, 10, 16, 9, 5, 7);
+	const custom = (customTemplate: string): FilenameConfig => ({ storeTitleInFilename: false, format: "custom", customTemplate });
+	assert.equal(taskFilename(ctx, custom("_{{title}}"), now), "_Buy milk");
+	assert.equal(taskFilename(ctx, custom("{{date}} {title}"), now), "2026-11-16 Buy milk");
+	assert.equal(taskFilename(ctx, custom("{{context}}-{{titleKebab}}-{{dueDate}}"), now), "home-buy-milk-2026-11-20");
+	assert.equal(taskFilename({ ...ctx, title: "a/b: c?" }, custom("_{{title}}"), now), "_a b c");
+	// Unknown variables are dropped; a template that leaves nothing falls back to the title.
+	assert.equal(taskFilename(ctx, custom("{{unknown}}{{title}}"), now), "Buy milk");
+	assert.equal(taskFilename(ctx, custom("{{unknown}}"), now), "Buy milk");
+	// A path separator in the template never makes a subfolder.
+	assert.equal(taskFilename(ctx, custom("{{year}}/{{title}}"), now), "2026 Buy milk");
+	// Title-in-filename and the non-custom formats keep the title.
+	assert.equal(taskFilename(ctx, { ...custom("_{{title}}"), storeTitleInFilename: true }, now), "Buy milk");
+	assert.equal(taskFilename(ctx, { ...custom("_{{title}}"), format: "zettel" }, now), "Buy milk");
+	assert.equal(taskFilename(ctx, custom("  "), now), "Buy milk");
 });

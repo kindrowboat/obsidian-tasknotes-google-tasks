@@ -1,6 +1,6 @@
 import type { App } from "obsidian";
 import type { PluginSettings } from "../settings";
-import type { StatusConfig } from "../sync/model";
+import type { FilenameConfig, StatusConfig } from "../sync/model";
 
 /** The TaskNotes conventions the sync needs, resolved from TaskNotes or our fallback settings. */
 export interface TaskNotesConfig extends StatusConfig {
@@ -19,6 +19,7 @@ export interface TaskNotesConfig extends StatusConfig {
 	};
 	defaultPriority: string;
 	storeTitleInFilename: boolean;
+	filename: FilenameConfig;
 	/** Where this config came from, shown in settings. */
 	source: "tasknotes" | "fallback";
 }
@@ -33,6 +34,8 @@ interface TaskNotesSettingsLike {
 	defaultTaskStatus?: string;
 	defaultTaskPriority?: string;
 	storeTitleInFilename?: boolean;
+	taskFilenameFormat?: string;
+	customFilenameTemplate?: string;
 	fieldMapping?: Partial<Record<string, string>>;
 	customStatuses?: { value: string; isCompleted?: boolean }[];
 }
@@ -66,6 +69,7 @@ export function resolveConfig(app: App, s: PluginSettings): TaskNotesConfig {
 		completedStatuses: fallbackCompleted.length ? fallbackCompleted : [f.doneStatus],
 		defaultPriority: f.defaultPriority,
 		storeTitleInFilename: f.storeTitleInFilename,
+		filename: { storeTitleInFilename: f.storeTitleInFilename, format: "custom", customTemplate: f.filenameTemplate },
 		source: "fallback",
 	};
 	if (!s.useTaskNotesSettings) return base;
@@ -80,6 +84,7 @@ export function resolveConfig(app: App, s: PluginSettings): TaskNotesConfig {
 			? { kind: "property", name: tn.taskPropertyName, value: tn.taskPropertyValue ?? "" }
 			: { kind: "tag", tag: (tn.taskTag ?? f.taskTag).replace(/^#/, "") };
 
+	const storeTitleInFilename = tn.storeTitleInFilename ?? base.storeTitleInFilename;
 	return {
 		tasksFolder: tn.tasksFolder ?? base.tasksFolder,
 		identification,
@@ -99,7 +104,12 @@ export function resolveConfig(app: App, s: PluginSettings): TaskNotesConfig {
 		doneStatus: completed[0] ?? base.doneStatus,
 		completedStatuses: completed.length ? completed : base.completedStatuses,
 		defaultPriority: tn.defaultTaskPriority ?? base.defaultPriority,
-		storeTitleInFilename: tn.storeTitleInFilename ?? base.storeTitleInFilename,
+		storeTitleInFilename,
+		filename: {
+			storeTitleInFilename,
+			format: tn.taskFilenameFormat ?? "title",
+			customTemplate: tn.customFilenameTemplate ?? "{{title}}",
+		},
 		source: "tasknotes",
 	};
 }

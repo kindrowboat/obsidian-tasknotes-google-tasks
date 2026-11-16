@@ -285,6 +285,7 @@ export class SettingsTab extends PluginSettingTab {
 		field("tasksFolder", "Tasks folder", "New task notes from Google are created here.");
 		field("taskTag", "Task tag");
 		field("storeTitleInFilename", "Title is the file name");
+		field("filenameTemplate", "File name template", "Used for new notes when the title isn't the file name. {{title}}, {{date}}, {{year}}, {{month}}, {{day}} and other TaskNotes variables work.");
 		field("titleField", "Title property");
 		field("statusField", "Status property");
 		field("dueField", "Due property");
