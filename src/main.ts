@@ -13,6 +13,8 @@ const INDEX_WAIT_MS = 10_000;
 const CHANGE_DEBOUNCE_MS = 3_000;
 /** How long to ignore change events for files the sync itself just wrote. */
 const OWN_WRITE_GRACE_MS = 5_000;
+/** Device-local key (not in data.json, so it doesn't follow the vault to other devices). */
+const SYNC_HERE_KEY = "tasknotes-google-tasks:sync-on-this-device";
 
 export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	settings!: PluginSettings;
@@ -26,9 +28,12 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	/** Path → time until which change events for it are our own writes. */
 	private ownWrites = new Map<string, number>();
 	private runningEngine: SyncEngine | null = null;
+	/** Whether automatic syncs run on this device. Stored per device, not in plugin settings. */
+	syncHere = true;
 
 	async onload() {
 		await this.loadSettings();
+		this.syncHere = this.loadLocal(SYNC_HERE_KEY) !== false;
 		this.api = new TasksApi(() => this.getAccessToken());
 
 		this.statusBar = this.addStatusBarItem();
@@ -38,6 +43,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 		this.addCommand({ id: "sync", name: "Sync with Google Tasks", callback: () => void this.sync(true) });
 		this.addCommand({ id: "refresh-lists", name: "Refresh Google Tasks lists", callback: () => void this.refreshLists() });
 		this.addCommand({ id: "sign-in", name: "Sign in to Google", callback: () => void this.signIn() });
+		this.addCommand({ id: "toggle-sync-here", name: "Toggle automatic sync on this device", callback: () => void this.setSyncHere(!this.syncHere) });
 		this.addCommand({ id: "toggle-status-bar", name: "Toggle status bar sync time", callback: () => void this.setStatusBarVisible(!this.settings.showStatusBar) });
 
 		this.addSettingTab(new SettingsTab(this.app, this));
@@ -48,7 +54,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(async () => {
 			this.restartInterval();
-			if (this.settings.syncOnStartup && this.settings.tokens) {
+			if (this.syncHere && this.settings.syncOnStartup && this.settings.tokens) {
 				await this.waitForIndex();
 				void this.sync(false);
 			}
@@ -62,7 +68,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 
 	/** Queue a sync after a task note is created, edited, renamed or deleted. */
 	private onTaskChanged(file: TAbstractFile, oldPath?: string) {
-		if (!this.settings.syncOnChange || !this.settings.tokens) return;
+		if (!this.syncHere || !this.settings.syncOnChange || !this.settings.tokens) return;
 		if (!(file instanceof TFile) || file.extension !== "md") return;
 		const now = Date.now();
 		if ((this.ownWrites.get(file.path) ?? 0) > now || (oldPath && (this.ownWrites.get(oldPath) ?? 0) > now)) return;
@@ -105,7 +111,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	/** Restart the periodic sync timer from current settings. */
 	restartInterval() {
 		this.clearInterval();
-		if (!this.settings.autoSync) return;
+		if (!this.syncHere || !this.settings.autoSync) return;
 		const minutes = Math.max(1, Number(this.settings.syncIntervalMinutes) || DEFAULT_SETTINGS.syncIntervalMinutes);
 		this.intervalId = window.setInterval(() => void this.sync(false), minutes * 60_000);
 		this.registerInterval(this.intervalId);
@@ -171,7 +177,40 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 		}
 	}
 
+	/** Turn automatic syncing on or off for this device only. */
+	setSyncHere(on: boolean) {
+		this.syncHere = on;
+		this.saveLocal(SYNC_HERE_KEY, on);
+		this.restartInterval();
+		if (!on && this.changeTimer !== null) {
+			window.clearTimeout(this.changeTimer);
+			this.changeTimer = null;
+		}
+		this.updateStatusBar();
+		new Notice(on ? "Google Tasks: automatic sync is on for this device." : "Google Tasks: automatic sync is paused on this device. Manual syncs still work.");
+	}
+
+	/** Vault-scoped localStorage; falls back to window.localStorage before Obsidian 1.8.7. */
+	private loadLocal(key: string): unknown {
+		const app = this.app as unknown as { loadLocalStorage?: (k: string) => unknown };
+		if (app.loadLocalStorage) return app.loadLocalStorage(key);
+		const raw = window.localStorage.getItem(`${this.app.vault.getName()}:${key}`);
+		try {
+			return raw === null ? null : JSON.parse(raw);
+		} catch {
+			return null;
+		}
+	}
+
+	private saveLocal(key: string, value: unknown) {
+		const app = this.app as unknown as { saveLocalStorage?: (k: string, v: unknown) => void };
+		if (app.saveLocalStorage) return app.saveLocalStorage(key, value);
+		window.localStorage.setItem(`${this.app.vault.getName()}:${key}`, JSON.stringify(value));
+	}
+
+	/** `interactive` syncs (command, ribbon, button) run even when automatic sync is paused on this device. */
 	async sync(interactive: boolean): Promise<SyncSummary | null> {
+		if (!interactive && !this.syncHere) return null;
 		if (this.syncing) {
 			if (interactive) new Notice("A Google Tasks sync is already running.");
 			return null;
@@ -223,7 +262,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	private updateStatusBar(text?: string) {
 		this.statusBar.toggle(this.settings.showStatusBar);
 		const last = this.settings.lastSync ? new Date(this.settings.lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "never";
-		this.statusBar.setText(`Google Tasks: ${text ?? last}`);
+		this.statusBar.setText(`Google Tasks: ${text ?? (this.syncHere ? last : `paused here (last ${last})`)}`);
 	}
 }
 

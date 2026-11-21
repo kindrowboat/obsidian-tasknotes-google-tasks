@@ -65,6 +65,13 @@ export class SettingsTab extends PluginSettingTab {
 
 	private syncSection(el: HTMLElement) {
 		new Setting(el).setName("Sync").setHeading();
+		new Setting(el)
+			.setName("Sync automatically on this device")
+			.setDesc("Saved on this device only, not in the plugin settings that sync with your vault. If the vault is open on several computers, turn this off on all but one so only that one syncs. Manual syncs (command, ribbon, Sync now) still work here.")
+			.addToggle((t) =>
+				t.setValue(this.plugin.syncHere).onChange((v) => {
+					this.plugin.setSyncHere(v);
+				}));
 		new Setting(el).setName("Sync automatically").addToggle((t) =>
 			t.setValue(this.s.autoSync).onChange(async (v) => {
 				this.s.autoSync = v;
