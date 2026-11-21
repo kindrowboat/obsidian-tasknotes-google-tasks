@@ -1,6 +1,6 @@
 {
   "name": "obsidian-tasknotes-google-tasks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Two-way sync between TaskNotes and Google Tasks.",
   "main": "main.js",
   "type": "module",
@@ -12,7 +12,11 @@
     "version": "node scripts/version-bump.mjs && git add manifest.json versions.json",
     "publish-plugin": "node scripts/publish.mjs"
   },
-  "keywords": ["obsidian", "tasknotes", "google-tasks"],
+  "keywords": [
+    "obsidian",
+    "tasknotes",
+    "google-tasks"
+  ],
   "author": "Ko-op Dunlap",
   "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
