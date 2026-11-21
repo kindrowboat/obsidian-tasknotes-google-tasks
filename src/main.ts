@@ -1,4 +1,4 @@
-import { Notice, Plugin, TAbstractFile, TFile } from "obsidian";
+import { Notice, Platform, Plugin, TAbstractFile, TFile } from "obsidian";
 import { refresh, revoke, signIn } from "./google/auth";
 import { TasksApi } from "./google/tasksApi";
 import { DEFAULT_SETTINGS, PluginSettings } from "./settings";
@@ -13,8 +13,6 @@ const INDEX_WAIT_MS = 10_000;
 const CHANGE_DEBOUNCE_MS = 3_000;
 /** How long to ignore change events for files the sync itself just wrote. */
 const OWN_WRITE_GRACE_MS = 5_000;
-/** Device-local key (not in data.json, so it doesn't follow the vault to other devices). */
-const SYNC_HERE_KEY = "tasknotes-google-tasks:sync-on-this-device";
 
 export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	settings!: PluginSettings;
@@ -28,12 +26,11 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	/** Path → time until which change events for it are our own writes. */
 	private ownWrites = new Map<string, number>();
 	private runningEngine: SyncEngine | null = null;
-	/** Whether automatic syncs run on this device. Stored per device, not in plugin settings. */
-	syncHere = true;
+	/** This computer's hostname, or null on mobile. */
+	readonly hostname: string | null = readHostname();
 
 	async onload() {
 		await this.loadSettings();
-		this.syncHere = this.loadLocal(SYNC_HERE_KEY) !== false;
 		this.api = new TasksApi(() => this.getAccessToken());
 
 		this.statusBar = this.addStatusBarItem();
@@ -43,7 +40,11 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 		this.addCommand({ id: "sync", name: "Sync with Google Tasks", callback: () => void this.sync(true) });
 		this.addCommand({ id: "refresh-lists", name: "Refresh Google Tasks lists", callback: () => void this.refreshLists() });
 		this.addCommand({ id: "sign-in", name: "Sign in to Google", callback: () => void this.signIn() });
-		this.addCommand({ id: "toggle-sync-here", name: "Toggle automatic sync on this device", callback: () => void this.setSyncHere(!this.syncHere) });
+		this.addCommand({ id: "sync-only-here", name: "Sync automatically only on this computer", callback: () => {
+			if (this.hostname) void this.setSyncHost(this.hostname);
+			else new Notice("Google Tasks: only a desktop computer can be the one that syncs.");
+		} });
+		this.addCommand({ id: "sync-anywhere", name: "Sync automatically on every device", callback: () => void this.setSyncHost("") });
 		this.addCommand({ id: "toggle-status-bar", name: "Toggle status bar sync time", callback: () => void this.setStatusBarVisible(!this.settings.showStatusBar) });
 
 		this.addSettingTab(new SettingsTab(this.app, this));
@@ -177,35 +178,23 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 		}
 	}
 
-	/** Turn automatic syncing on or off for this device only. */
-	setSyncHere(on: boolean) {
-		this.syncHere = on;
-		this.saveLocal(SYNC_HERE_KEY, on);
+	/** Whether automatic syncs run here: no computer is chosen, or this is the chosen one. */
+	get syncHere(): boolean {
+		const host = this.settings.syncHost.trim();
+		return !host || host === this.hostname;
+	}
+
+	/** Choose the one computer that syncs automatically; "" means every device. */
+	async setSyncHost(host: string, quiet = false) {
+		this.settings.syncHost = host;
+		await this.saveSettings();
 		this.restartInterval();
-		if (!on && this.changeTimer !== null) {
+		if (!this.syncHere && this.changeTimer !== null) {
 			window.clearTimeout(this.changeTimer);
 			this.changeTimer = null;
 		}
 		this.updateStatusBar();
-		new Notice(on ? "Google Tasks: automatic sync is on for this device." : "Google Tasks: automatic sync is paused on this device. Manual syncs still work.");
-	}
-
-	/** Vault-scoped localStorage; falls back to window.localStorage before Obsidian 1.8.7. */
-	private loadLocal(key: string): unknown {
-		const app = this.app as unknown as { loadLocalStorage?: (k: string) => unknown };
-		if (app.loadLocalStorage) return app.loadLocalStorage(key);
-		const raw = window.localStorage.getItem(`${this.app.vault.getName()}:${key}`);
-		try {
-			return raw === null ? null : JSON.parse(raw);
-		} catch {
-			return null;
-		}
-	}
-
-	private saveLocal(key: string, value: unknown) {
-		const app = this.app as unknown as { saveLocalStorage?: (k: string, v: unknown) => void };
-		if (app.saveLocalStorage) return app.saveLocalStorage(key, value);
-		window.localStorage.setItem(`${this.app.vault.getName()}:${key}`, JSON.stringify(value));
+		if (!quiet) new Notice(host ? `Google Tasks: only ${host} syncs automatically now.` : "Google Tasks: every device syncs automatically now.");
 	}
 
 	/** `interactive` syncs (command, ribbon, button) run even when automatic sync is paused on this device. */
@@ -262,7 +251,7 @@ export default class TaskNotesGoogleTasksPlugin extends Plugin {
 	private updateStatusBar(text?: string) {
 		this.statusBar.toggle(this.settings.showStatusBar);
 		const last = this.settings.lastSync ? new Date(this.settings.lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "never";
-		this.statusBar.setText(`Google Tasks: ${text ?? (this.syncHere ? last : `paused here (last ${last})`)}`);
+		this.statusBar.setText(`Google Tasks: ${text ?? (this.syncHere ? last : `syncs on ${this.settings.syncHost} (last ${last})`)}`);
 	}
 }
 
@@ -275,4 +264,14 @@ function describe(s: SyncSummary): string {
 	if (s.deletedLocal) parts.push(`${s.deletedLocal} removed locally`);
 	if (s.deletedRemote) parts.push(`${s.deletedRemote} removed from Google`);
 	return `Google Tasks sync: ${parts.length ? parts.join(", ") : "everything up to date"}.`;
+}
+
+function readHostname(): string | null {
+	if (!Platform.isDesktopApp) return null;
+	try {
+		const os = (window as unknown as { require: (m: string) => { hostname(): string } }).require("os");
+		return os.hostname() || null;
+	} catch {
+		return null;
+	}
 }

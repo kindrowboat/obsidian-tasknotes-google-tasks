@@ -46,6 +46,8 @@ export interface PluginSettings {
 	syncOnChange: boolean;
 	/** Show the last sync time in the status bar. */
 	showStatusBar: boolean;
+	/** Hostname of the only computer that syncs automatically; "" means every device. */
+	syncHost: string;
 
 	listMappings: ListMapping[];
 
@@ -81,6 +83,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncOnStartup: true,
 	syncOnChange: true,
 	showStatusBar: true,
+	syncHost: "",
 
 	listMappings: [],
 

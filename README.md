@@ -72,7 +72,7 @@ Rules:
 - **Sync automatically** runs every *X* minutes (5 by default). You can change the interval in the settings.
 - **Sync when tasks change** (on by default) syncs about 3 seconds after you create, edit, rename or delete a task note, so you don't have to wait for the interval. Edits made by the sync itself don't trigger another sync.
 - **Sync when Obsidian starts** runs a sync once the vault has finished indexing.
-- **Sync automatically on this device** (on by default) is saved on each device rather than in the plugin settings, so it doesn't follow your vault around. If the vault is open on several computers, turn it off on all but one, so only that one syncs on its own. With it off, the interval, startup and on-change syncs don't run there, but the command, ribbon icon and **Sync now** still do. Also available as the **Toggle automatic sync on this device** command.
+- **Only sync automatically on** names the one computer (by hostname) that runs automatic syncs. It's saved with the plugin settings, so every device sees the same choice. If the vault is open on several devices, click **Use this computer** on the one you want, and the others stop syncing on their own, including new ones. The interval, startup and on-change syncs don't run on the others, but the command, ribbon icon and **Sync now** still do. Phones and tablets have no hostname, so they can't be chosen. Leave it blank (the default) for every device to sync. Also available as the **Sync automatically only on this computer** and **Sync automatically on every device** commands.
 - The status bar shows when the last sync happened. Hide it in settings or with the **Toggle status bar sync time** command.
 
 ### What syncs

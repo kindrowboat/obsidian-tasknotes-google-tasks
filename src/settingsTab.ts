@@ -65,13 +65,25 @@ export class SettingsTab extends PluginSettingTab {
 
 	private syncSection(el: HTMLElement) {
 		new Setting(el).setName("Sync").setHeading();
+		const here = this.plugin.hostname;
+		const chosen = this.s.syncHost.trim();
+		const status = !chosen
+			? "Every device syncs automatically."
+			: chosen === here ? "This computer is the one that syncs automatically." : `Only ${chosen} syncs automatically. This device doesn't.`;
 		new Setting(el)
-			.setName("Sync automatically on this device")
-			.setDesc("Saved on this device only, not in the plugin settings that sync with your vault. If the vault is open on several computers, turn this off on all but one so only that one syncs. Manual syncs (command, ribbon, Sync now) still work here.")
-			.addToggle((t) =>
-				t.setValue(this.plugin.syncHere).onChange((v) => {
-					this.plugin.setSyncHere(v);
-				}));
+			.setName("Only sync automatically on")
+			.setDesc(`${status} If the vault is open on several devices, pick one computer so only it syncs on its own. Leave blank for every device. Manual syncs (command, ribbon, Sync now) work everywhere. This device: ${here ?? "a mobile device, which has no hostname"}.`)
+			.addText((t) =>
+				t.setPlaceholder("Any device").setValue(this.s.syncHost).onChange(async (v) => {
+					await this.plugin.setSyncHost(v.trim(), true);
+				}))
+			.addButton((b) => {
+				b.setButtonText("Use this computer").setDisabled(!here || chosen === here).onClick(async () => {
+					if (!here) return;
+					await this.plugin.setSyncHost(here);
+					this.display();
+				});
+			});
 		new Setting(el).setName("Sync automatically").addToggle((t) =>
 			t.setValue(this.s.autoSync).onChange(async (v) => {
 				this.s.autoSync = v;
